@@ -109,7 +109,10 @@
 						"type": "DatasetReference",
 						"parameters": {
 							"container": "bronze",
-							"floder_name": "cdc",
+							"floder_name": {
+								"value": "@{pipeline().parameters.tablename}_CDC",
+								"type": "Expression"
+							},
 							"file_name": "cdc.json"
 						}
 					},
@@ -279,7 +282,10 @@
 									"type": "DatasetReference",
 									"parameters": {
 										"container": "bronze",
-										"floder_name": "cdc",
+										"floder_name": {
+											"value": "@{pipeline().parameters.tablename}_CDC",
+											"type": "Expression"
+										},
 										"file_name": "empty.json"
 									}
 								}
@@ -305,7 +311,7 @@
 				"type": "String"
 			},
 			"tablename": {
-				"type": "String"
+				"type": "string"
 			},
 			"cdc_column": {
 				"type": "string"
