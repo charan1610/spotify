@@ -1,0 +1,330 @@
+{
+	"name": "Pl_sql_delta",
+	"properties": {
+		"activities": [
+			{
+				"name": "sql_adls",
+				"type": "Copy",
+				"dependsOn": [
+					{
+						"activity": "fetch_cdc",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					},
+					{
+						"activity": "current",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 1,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "AzureSqlSource",
+						"sqlReaderQuery": {
+							"value": "@{concat(\n  'SELECT * FROM ',\n  pipeline().parameters.Schema, '.', pipeline().parameters.tablename,\n  ' WHERE ', pipeline().parameters.cdc_column,\n  ' > ''',\n  if(\n    empty(pipeline().parameters.from_date),\n    activity('fetch_cdc').output.value[0].cdc,\n    pipeline().parameters.from_date\n  ),''''\n)}\n\n\n\n\n\n",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"sink": {
+						"type": "ParquetSink",
+						"storeSettings": {
+							"type": "AzureBlobFSWriteSettings"
+						},
+						"formatSettings": {
+							"type": "ParquetWriteSettings"
+						}
+					},
+					"enableStaging": false,
+					"translator": {
+						"type": "TabularTranslator",
+						"typeConversion": true,
+						"typeConversionSettings": {
+							"allowDataTruncation": true,
+							"treatBooleanAsNumber": false
+						}
+					}
+				},
+				"inputs": [
+					{
+						"referenceName": "Ds_sql",
+						"type": "DatasetReference"
+					}
+				],
+				"outputs": [
+					{
+						"referenceName": "Ds_Parquet",
+						"type": "DatasetReference",
+						"parameters": {
+							"container": "bronze",
+							"Floder": {
+								"value": "@pipeline().parameters.tablename",
+								"type": "Expression"
+							},
+							"filename": {
+								"value": "@concat(pipeline().parameters.tablename,'_',variables('current'))",
+								"type": "Expression"
+							}
+						}
+					}
+				]
+			},
+			{
+				"name": "fetch_cdc",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "JsonSource",
+						"storeSettings": {
+							"type": "AzureBlobFSReadSettings",
+							"recursive": true,
+							"enablePartitionDiscovery": false
+						},
+						"formatSettings": {
+							"type": "JsonReadSettings"
+						}
+					},
+					"dataset": {
+						"referenceName": "Ds_fetch_cdc",
+						"type": "DatasetReference",
+						"parameters": {
+							"container": "bronze",
+							"floder_name": {
+								"value": "@{pipeline().parameters.tablename}_CDC",
+								"type": "Expression"
+							},
+							"file_name": "cdc.json"
+						}
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "current",
+				"type": "SetVariable",
+				"dependsOn": [],
+				"policy": {
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"variableName": "current",
+					"value": {
+						"value": "@formatDateTime(utcnow(), 'yyyyMMdd_HHmmss')",
+						"type": "Expression"
+					}
+				}
+			},
+			{
+				"name": "Incremental_data",
+				"type": "IfCondition",
+				"dependsOn": [
+					{
+						"activity": "sql_adls",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"expression": {
+						"value": "@greater(activity('sql_adls').output.dataRead,0)",
+						"type": "Expression"
+					},
+					"ifFalseActivities": [
+						{
+							"name": "Deleteduplicatedata",
+							"type": "Delete",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"dataset": {
+									"referenceName": "Ds_Parquet",
+									"type": "DatasetReference",
+									"parameters": {
+										"container": "bronze",
+										"Floder": {
+											"value": "@pipeline().parameters.tablename",
+											"type": "Expression"
+										},
+										"filename": "@concat(pipeline().parameters.tablename,'_',variables('current'))"
+									}
+								},
+								"logStorageSettings": {
+									"linkedServiceName": {
+										"referenceName": "Ls_AzureDataLakeStorage",
+										"type": "LinkedServiceReference"
+									},
+									"path": "log"
+								},
+								"enableLogging": true,
+								"storeSettings": {
+									"type": "AzureBlobFSReadSettings",
+									"recursive": true,
+									"enablePartitionDiscovery": false
+								}
+							}
+						}
+					],
+					"ifTrueActivities": [
+						{
+							"name": "max_cdc_copy1",
+							"type": "Script",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"linkedServiceName": {
+								"referenceName": "Ds_SqlDatabase",
+								"type": "LinkedServiceReference"
+							},
+							"typeProperties": {
+								"scripts": [
+									{
+										"type": "Query",
+										"text": {
+											"value": "SELECT MAX(@{pipeline().parameters.cdc_column}) as cdc FROM @{pipeline().parameters.Schema}.@{pipeline().parameters.tablename}",
+											"type": "Expression"
+										}
+									}
+								],
+								"scriptBlockExecutionTimeout": "02:00:00"
+							}
+						},
+						{
+							"name": "upadte_cdc_copy1",
+							"type": "Copy",
+							"dependsOn": [
+								{
+									"activity": "max_cdc_copy1",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "JsonSource",
+									"additionalColumns": [
+										{
+											"name": "cdc",
+											"value": {
+												"value": "@trim(activity('max_cdc_copy1').output.resultSets[0].rows[0].cdc)\n",
+												"type": "Expression"
+											}
+										}
+									],
+									"storeSettings": {
+										"type": "AzureBlobFSReadSettings",
+										"recursive": true,
+										"enablePartitionDiscovery": false
+									},
+									"formatSettings": {
+										"type": "JsonReadSettings"
+									}
+								},
+								"sink": {
+									"type": "JsonSink",
+									"storeSettings": {
+										"type": "AzureBlobFSWriteSettings"
+									},
+									"formatSettings": {
+										"type": "JsonWriteSettings"
+									}
+								},
+								"enableStaging": false
+							},
+							"inputs": [
+								{
+									"referenceName": "Ds_fetch_cdc",
+									"type": "DatasetReference",
+									"parameters": {
+										"container": "bronze",
+										"floder_name": {
+											"value": "@{pipeline().parameters.tablename}_CDC",
+											"type": "Expression"
+										},
+										"file_name": "empty.json"
+									}
+								}
+							],
+							"outputs": [
+								{
+									"referenceName": "Ds_fetch_cdc",
+									"type": "DatasetReference",
+									"parameters": {
+										"container": "bronze",
+										"floder_name": "cdc",
+										"file_name": "cdc.json"
+									}
+								}
+							]
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"Schema": {
+				"type": "String"
+			},
+			"tablename": {
+				"type": "string"
+			},
+			"cdc_column": {
+				"type": "string"
+			},
+			"from_date": {
+				"type": "String"
+			}
+		},
+		"variables": {
+			"current": {
+				"type": "String"
+			}
+		},
+		"annotations": []
+	}
+}
