@@ -96,7 +96,7 @@
 								"source": {
 									"type": "AzureSqlSource",
 									"sqlReaderQuery": {
-										"value": "@{concat('SELECT * FROM ',item().schema,'.',item().table,' WHERE ',item().cdc_col,' > ''',if(empty(item().from_date),activity('fetch_cdc').output.value[0].cdc,item().from_date),'''')}",
+										"value": "@{concat('SELECT * FROM ',item().schema,'.',item().table,' WHERE ',item().cdc_col,' > ''',if(or(empty(activity('fetch_cdc').output.value[0].cdc),equals(activity('fetch_cdc').output.value[0].cdc,'')),'1900-01-01T00:00:00',activity('fetch_cdc').output.value[0].cdc),'''')}",
 										"type": "Expression"
 									},
 									"partitionOption": "None"
@@ -185,14 +185,12 @@
 												"linkedServiceName": {
 													"referenceName": "Ls_AzureDataLakeStorage",
 													"type": "LinkedServiceReference"
-												},
-												"path": "log"
+												}
 											},
 											"enableLogging": true,
 											"storeSettings": {
 												"type": "AzureBlobFSReadSettings",
-												"recursive": true,
-												"enablePartitionDiscovery": false
+												"recursive": true
 											}
 										}
 									}
@@ -218,7 +216,7 @@
 												{
 													"type": "Query",
 													"text": {
-														"value": "@{concat('SELECT MAX(',item().cdc_col,') AS cdc FROM ',item().schema,'.',item().table)}",
+														"value": "@{concat('SELECT ISNULL(MAX(',item().cdc_col,'),''1900-01-01T00:00:00'') AS cdc FROM ',item().schema,'.',item().table)}",
 														"type": "Expression"
 													}
 												}
@@ -226,7 +224,7 @@
 										}
 									},
 									{
-										"name": "upadte_cdc_copy1",
+										"name": "update_cdc_copy1",
 										"type": "Copy",
 										"dependsOn": [
 											{
@@ -295,7 +293,7 @@
 												"parameters": {
 													"container": "bronze",
 													"floder_name": {
-														"value": "@{pipeline().parameters.tablename}_CDC",
+														"value": "@concat(item().table,'_CDC')",
 														"type": "Expression"
 													},
 													"file_name": "cdc.json"
