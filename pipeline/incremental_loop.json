@@ -306,6 +306,37 @@
 						}
 					]
 				}
+			},
+			{
+				"name": "Alerts",
+				"type": "WebActivity",
+				"dependsOn": [
+					{
+						"activity": "loop_incremental",
+						"dependencyConditions": [
+							"Failed",
+							"Skipped",
+							"Succeeded",
+							"Completed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"method": "POST",
+					"url": "https://prod-26.westindia.logic.azure.com:443/workflows/cecec4f50d984043a025f8146ae6b892/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=J42wNCNSdyTKOcT_wOhLRR-sBX_ex2_QbDdfP0l7i80",
+					"body": {
+						"value": "{\n  \"pipeline_name\":\"@{pipeline().Pipeline}\",\n  \"pipeline_runid\":\"@{pipeline().RunId}\",\n  \n}\n",
+						"type": "Expression"
+					}
+				}
 			}
 		],
 		"parameters": {
