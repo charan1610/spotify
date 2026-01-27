@@ -1,0 +1,9 @@
+{
+	"name": "spotify-factory",
+	"location": "southindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "4a097339-7939-4b37-a34f-f3e638c450ec",
+		"tenantId": "a834c829-82bb-4d37-940d-6e3096c76731"
+	}
+}
